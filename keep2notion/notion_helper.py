@@ -81,6 +81,24 @@ class NotionHelper:
         if self.day_database_id:
             self.write_database_id(self.day_database_id)
 
+    def database_query(self, database_id=None, **kwargs):
+        """Wrapper around Notion database query with backwards compatibility."""
+        if hasattr(self.client.databases, "query"):
+            filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
+            if database_id is not None:
+                filtered_kwargs["database_id"] = database_id
+            return self.client.databases.query(**filtered_kwargs)
+
+        if database_id is None:
+            raise ValueError("database_id is required when native query method is unavailable")
+
+        body = {k: v for k, v in kwargs.items() if v is not None}
+        return self.client.request(
+            path=f"databases/{database_id}/query",
+            method="POST",
+            body=body,
+        )
+
     def write_database_id(self, database_id):
         env_file = os.getenv('GITHUB_ENV')
         # 将值写入环境文件
@@ -162,7 +180,7 @@ class NotionHelper:
         if key in self.__cache:
             return self.__cache.get(key)
         filter = {"property": "标题", "title": {"equals": name}}
-        response = self.client.databases.query(database_id=id, filter=filter)
+        response = self.database_query(database_id=id, filter=filter)
         if len(response.get("results")) == 0:
             parent = {"database_id": id, "type": "database_id"}
             properties["标题"] = get_title(name)
@@ -201,7 +219,7 @@ class NotionHelper:
     @retry(stop_max_attempt_number=3, wait_fixed=5000)
     def query(self, **kwargs):
         kwargs = {k: v for k, v in kwargs.items() if v}
-        return self.client.databases.query(**kwargs)
+        return self.database_query(**kwargs)
 
     @retry(stop_max_attempt_number=3, wait_fixed=5000)
     def get_block_children(self, id):
@@ -228,7 +246,7 @@ class NotionHelper:
         has_more = True
         start_cursor = None
         while has_more:
-            response = self.client.databases.query(
+            response = self.database_query(
                 database_id=database_id,
                 filter=filter,
                 start_cursor=start_cursor,
@@ -246,7 +264,7 @@ class NotionHelper:
         has_more = True
         start_cursor = None
         while has_more:
-            response = self.client.databases.query(
+            response = self.database_query(
                 database_id=database_id,
                 start_cursor=start_cursor,
                 page_size=100,
